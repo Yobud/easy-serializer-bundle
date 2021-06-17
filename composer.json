@@ -1,0 +1,23 @@
+{
+    "name": "yobud/easy-serializer-bundle",
+    "type": "symfony-bundle",
+    "description": "This bundles handles a very simple and YAML serialization mapping with ExpressionLanguage security",
+    "minimum-stability": "stable",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jeremy Hubert",
+            "email": "jeremyh.contact@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.1",
+        "symfony/framework-bundle": "^4.4|^5.1",
+        "symfony/security-bundle": "^4.4|^5.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Yobud\\Bundle\\EasySerializerBundle\\": "src/"
+        }
+    }
+}
