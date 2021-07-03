@@ -126,6 +126,10 @@ final class SerializerContextBuilder implements SerializerContextBuilderInterfac
                 $data = $request->attributes->get('data');
             }
 
+            if ($request->attributes->get('previous_data')) {
+                $data = $request->attributes->get('previous_data');
+            }
+
             $expressionLanguage = $this->expressionLanguage;
             $variables = [
                 'object' => $data,
@@ -136,13 +140,16 @@ final class SerializerContextBuilder implements SerializerContextBuilderInterfac
             $context['groups'] = array_filter($groups, function ($group) use ($resourceMetadata, $expressionLanguage, $data, $variables, $operationType, $normalization) {
                 $parts = explode(':', $group);
 
-                $concerns = $parts[0];
-                $mode = $parts[1];
+                $entityClass = $parts[0];
+                $splitGroup = explode('.', $parts[1]);
+
+                $concerns = $splitGroup[0];
+                $mode = $splitGroup[1];
                 $criteria = isset($parts[2]) ? $parts[2] : null;
 
                 switch (true) {
                     case $concerns !== $operationType && 'any' !== $concerns:
-                    case $normalization && 'denormalization' !== $mode && 'any' !== $mode:
+//                    case $normalization && 'denormalization' !== $mode && 'any' !== $mode:
                         return false;
                     case !$criteria:
                         return true;
@@ -150,7 +157,7 @@ final class SerializerContextBuilder implements SerializerContextBuilderInterfac
                         return false;
                 }
 
-                return (bool) $expressionLanguage->evaluate($criteria, $variables);
+                return (bool)$expressionLanguage->evaluate($criteria, $variables);
             });
         }
 
