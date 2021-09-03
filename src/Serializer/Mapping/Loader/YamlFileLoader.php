@@ -62,15 +62,19 @@ class YamlFileLoader extends FileLoader
 
             if (isset($this->classesMetadata[$classMetadata->getName()])) {
                 $classMetadata->merge($this->classesMetadata[$classMetadata->getName()]);
+            } else {
+                // Store all security groups in a custom attribute metadata
+                $allGroups = new AttributeMetadata('_allGroups');
+                $allGroups->setIgnore(true);
+                $classMetadata->addAttributeMetadata($allGroups);
             }
 
             $this->classesMetadata[$classMetadata->getName()] = $classMetadata;
-
-            // Store all security groups in a custom attribute metadata
-            $allGroups = new AttributeMetadata('_allGroups');
-            $allGroups->setIgnore(true);
-
-            $classMetadata->addAttributeMetadata($allGroups);
+            foreach ($classMetadata->getAttributesMetadata() as $attributeMetadata) {
+                if ($attributeMetadata->getName() === '_allGroups') {
+                    $allGroups = $attributeMetadata;
+                }
+            }
 
             $this->processAttributes($allGroups, $data, $classMetadata->getName(), $baseGroup);
         }
@@ -221,7 +225,11 @@ class YamlFileLoader extends FileLoader
                             $attributeMetadata->addGroup($group);
                             $allGroups->addGroup($group);
                         }
-                        $this->classesMetadata[$previousPathElementClass]->addAttributeMetadata($attributeMetadata);
+
+                        $newClassMetadata = new ClassMetadata($previousPathElementClass);
+                        $newClassMetadata->addAttributeMetadata($attributeMetadata);
+
+                        $this->classesMetadata[$previousPathElementClass]->merge($newClassMetadata);
 
                         $previousPathElementClass = $this->getPathElementClass($this->classesMetadata[$previousPathElementClass]->getReflectionClass(), $pathElement);
 
