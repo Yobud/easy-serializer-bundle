@@ -75,7 +75,7 @@ class EasySerializerExtension extends Extension implements PrependExtensionInter
         return '';
     }
 
-    public function getAlias()
+    public function getAlias(): string
     {
         return 'easy_serializer';
     }
