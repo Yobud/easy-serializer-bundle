@@ -2,8 +2,13 @@
 
 namespace Yobud\Bundle\EasySerializerBundle\Serializer\Mapping\Loader;
 
+use Doctrine\Common\Annotations\AnnotationReader;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
+use Doctrine\ORM\Mapping\ManyToMany;
+use Doctrine\ORM\Mapping\ManyToOne;
+use Doctrine\ORM\Mapping\OneToMany;
+use Doctrine\ORM\Mapping\OneToOne;
 use Symfony\Component\Serializer\Exception\MappingException;
 use Symfony\Component\Serializer\Mapping\AttributeMetadata;
 use Symfony\Component\Serializer\Mapping\ClassMetadata;
@@ -56,17 +61,17 @@ class YamlFileLoader extends FileLoader
 
         $yaml = $this->classes[$classMetadata->getName()];
 
+        // Store all security groups in a custom attribute metadata
+        $allGroups = new AttributeMetadata('_allGroups');
+        $allGroups->setIgnore(true);
+        $classMetadata->addAttributeMetadata($allGroups);
+
         // Parse group ('item.normalization.get')
         foreach ($yaml as $group => $data) {
             $baseGroup = "{$classMetadata->getName()}:{$group}";
 
             if (isset($this->classesMetadata[$classMetadata->getName()])) {
                 $classMetadata->merge($this->classesMetadata[$classMetadata->getName()]);
-            } else {
-                // Store all security groups in a custom attribute metadata
-                $allGroups = new AttributeMetadata('_allGroups');
-                $allGroups->setIgnore(true);
-                $classMetadata->addAttributeMetadata($allGroups);
             }
 
             $this->classesMetadata[$classMetadata->getName()] = $classMetadata;
@@ -338,7 +343,7 @@ class YamlFileLoader extends FileLoader
                 }
             }
 
-            if (\class_exists($type)) {
+            if (\class_exists($type) && $type !== Collection::class) {
                 return $type;
             }
 
@@ -347,22 +352,26 @@ class YamlFileLoader extends FileLoader
             }
         }
 
-
+        // Check for doctrine relation
         if ($reflectionClass->hasProperty($property)) {
 
-            // Check for doctrine relation
-            preg_match('/targetEntity=([a-zA-Z\\\]*)(\[])?/', $reflectionClass->getProperty($property)->getDocComment(), $matches);
-            if (isset($matches[1])) {
-                $type = $matches[1];
+            $annotationReader = new AnnotationReader();
+            $annotations = $annotationReader->getPropertyAnnotations(
+                new \ReflectionProperty($reflectionClass->getName(), $property)
+            );
 
-                if (\class_exists($type)) {
-                    return $type;
+            foreach ($annotations as $annotation) {
+                switch($annotation) {
+                    case $annotation instanceof OneToMany:
+                    case $annotation instanceof ManyToMany:
+                    case $annotation instanceof OneToOne:
+                    case $annotation instanceof ManyToOne:
+                        $type = $annotation->targetEntity;
+
+                    if (\class_exists($type)) {
+                        return $type;
+                    }
                 }
-
-                if (\class_exists("{$reflectionClass->getNamespaceName()}\\{$type}")) {
-                    return "{$reflectionClass->getNamespaceName()}\\{$type}";
-                }
-
             }
 
             // Look for property type
