@@ -368,9 +368,27 @@ class YamlFileLoader extends FileLoader
                     case $annotation instanceof ManyToOne:
                         $type = $annotation->targetEntity;
 
-                    if (\class_exists($type)) {
-                        return $type;
-                    }
+                        if (\class_exists($type)) {
+                            return $type;
+                        }
+                }
+            }
+
+            // get from attributes
+            // retrieve attributes for property
+            $attributes = (new \ReflectionProperty($reflectionClass->getName(), $property))->getAttributes();
+            foreach ($attributes as $attribute) {
+                $attributeClassName = $attribute->getName();
+                switch ($attributeClassName) {
+                    case OneToMany::class:
+                    case ManyToMany::class:
+                    case OneToOne::class:
+                    case ManyToOne::class:
+                        $type = $attribute->newInstance()->targetEntity;
+
+                        if (\class_exists($type)) {
+                            return $type;
+                        }
                 }
             }
 
