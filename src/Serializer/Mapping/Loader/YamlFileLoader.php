@@ -24,6 +24,8 @@ use Symfony\Component\Yaml\Yaml;
  */
 class YamlFileLoader extends FileLoader
 {
+    protected $testId = null;
+
     protected $yamlParser;
 
     /**
@@ -40,6 +42,7 @@ class YamlFileLoader extends FileLoader
      */
     protected $classesMetadata = [];
 
+    protected $parsedFile = [];
 
     /**
      * {@inheritdoc}
@@ -47,41 +50,68 @@ class YamlFileLoader extends FileLoader
      */
     public function loadClassMetadata(ClassMetadataInterface $classMetadata): bool
     {
+        if (!$this->testId) {
+            $this->testId = \rand(1, 1000000);
+        }
+
+        // Seek if the requested class is used in the YAML file
         if (null === $this->classes) {
             $this->classes = $this->getClassesFromYaml();
         }
 
+        // If no class declared in the yaml file, return false (no mapping in file)
         if (!$this->classes) {
             return false;
         }
 
+        // If the class is not used in the YAML file, return false
         if (!isset($this->classes[$classMetadata->getName()])) {
             return false;
         }
 
-        $yaml = $this->classes[$classMetadata->getName()];
-
-        // Store all security groups in a custom attribute metadata
-        $allGroups = new AttributeMetadata('_allGroups');
-        $allGroups->setIgnore(true);
-        $classMetadata->addAttributeMetadata($allGroups);
-
-        // Parse group ('item.normalization.get')
-        foreach ($yaml as $group => $data) {
-            $baseGroup = "{$classMetadata->getName()}:{$group}";
-
-            if (isset($this->classesMetadata[$classMetadata->getName()])) {
-                $classMetadata->merge($this->classesMetadata[$classMetadata->getName()]);
+        // If $classMetadata doesn't have _allGroups attributeMetadata, create it
+        $hasAllGroups = false;
+        foreach ($classMetadata->getAttributesMetadata() as $attributeMetadata) {
+            if ($attributeMetadata->getName() === '_allGroups') {
+                $hasAllGroups = true;
             }
+        }
 
-            $this->classesMetadata[$classMetadata->getName()] = $classMetadata;
-            foreach ($classMetadata->getAttributesMetadata() as $attributeMetadata) {
-                if ($attributeMetadata->getName() === '_allGroups') {
-                    $allGroups = $attributeMetadata;
+        if (!$hasAllGroups) {
+            // Store all security groups in a custom attribute metadata
+            $allGroups = new AttributeMetadata('_allGroups');
+            $allGroups->setIgnore(true);
+            $classMetadata->addAttributeMetadata($allGroups);
+        }
+
+        // Search in yaml all groups (and security groups) that are used for the current class ($classMetadata) and apply to all its concerned attributes
+        foreach ($this->parsedFile as $yamlEntity => $groups) {
+            // Parse group ('item.normalization.get')
+            foreach ($groups as $group => $data) {
+                $baseGroup = "{$yamlEntity}:{$group}";
+
+                if (!isset($this->classesMetadata[$yamlEntity])) {
+                    $this->classesMetadata[$yamlEntity] = new ClassMetadata($yamlEntity);
                 }
-            }
 
-            $this->processAttributes($allGroups, $data, $classMetadata->getName(), $baseGroup);
+                $yamlClassMetadata = $this->classesMetadata[$yamlEntity];
+
+                $allGroups = null;
+                foreach ($yamlClassMetadata->getAttributesMetadata() as $attributeMetadata) {
+                    if ($attributeMetadata->getName() === '_allGroups') {
+                        $allGroups = $attributeMetadata;
+                    }
+                }
+
+                if (!$allGroups) {
+                    // Store all security groups in a custom attribute metadata
+                    $allGroups = new AttributeMetadata('_allGroups');
+                    $allGroups->setIgnore(true);
+                    $yamlClassMetadata->addAttributeMetadata($allGroups);
+                }
+
+                $this->processAttributes($allGroups, $data, $yamlEntity, $baseGroup);
+            }
         }
 
 //        if (isset($yaml['discriminator_map'])) {
@@ -98,6 +128,9 @@ class YamlFileLoader extends FileLoader
 //                $yaml['discriminator_map']['mapping']
 //            ));
 //        }
+
+        // Merge all the class metadata found in the YAML file
+        $classMetadata->merge($this->classesMetadata[$classMetadata->getName()]);
 
         return true;
     }
@@ -126,7 +159,8 @@ class YamlFileLoader extends FileLoader
             $this->yamlParser = new Parser();
         }
 
-        $classes = $this->yamlParser->parseFile($this->file, Yaml::PARSE_CONSTANT);
+        $this->parsedFile = $this->yamlParser->parseFile($this->file, Yaml::PARSE_CONSTANT);
+        $classes = $this->parsedFile;
 
         if (empty($classes)) {
             return [];
@@ -136,7 +170,10 @@ class YamlFileLoader extends FileLoader
             throw new MappingException(sprintf('The file "%s" must contain a YAML array.', $this->file));
         }
 
-        $allClasses = array_merge($classes, []);
+        // The class described in the file is the first and only key
+        $mainClass = \array_keys($classes)[0];
+
+        $allClasses = [];
         foreach ($classes as $className => $class) {
             // Parse group ('item.normalization.get')
             foreach ($class as $group => $data) {
@@ -144,7 +181,7 @@ class YamlFileLoader extends FileLoader
                     throw new MappingException(sprintf('The mapping described for group "%s" of entity "%s" in file "%s" should not be empty.', $group, $className, $this->file));
                 }
 
-                $allClasses = \array_merge_recursive($allClasses, $this->findClassInAttributes($data, $className, $group));
+                $allClasses = \array_merge_recursive($allClasses, $this->findClassInAttributes($data, $className, "{$mainClass}:{$group}"));
             }
         }
 
